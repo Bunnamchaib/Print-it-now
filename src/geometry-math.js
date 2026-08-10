@@ -67,6 +67,50 @@ export function computeTriangleVolume(points, indices) {
   return Math.abs(signedVolume);
 }
 
+export function computeTriangleSurfaceArea(points, indices) {
+  const faces = indices && indices.length ? indices : [...Array(points.length / 3).keys()];
+  let totalArea = 0;
+
+  for (let faceIndex = 0; faceIndex < faces.length; faceIndex += 3) {
+    const a = faces[faceIndex] * 3;
+    const b = faces[faceIndex + 1] * 3;
+    const c = faces[faceIndex + 2] * 3;
+
+    const ax = points[a];
+    const ay = points[a + 1];
+    const az = points[a + 2];
+    const bx = points[b];
+    const by = points[b + 1];
+    const bz = points[b + 2];
+    const cx = points[c];
+    const cy = points[c + 1];
+    const cz = points[c + 2];
+
+    const abx = bx - ax;
+    const aby = by - ay;
+    const abz = bz - az;
+    const acx = cx - ax;
+    const acy = cy - ay;
+    const acz = cz - az;
+
+    const crossX = aby * acz - abz * acy;
+    const crossY = abz * acx - abx * acz;
+    const crossZ = abx * acy - aby * acx;
+
+    totalArea += 0.5 * Math.sqrt(
+      crossX * crossX +
+      crossY * crossY +
+      crossZ * crossZ
+    );
+  }
+
+  return totalArea;
+}
+
 export function mmToCm3(mm3) {
   return mm3 / 1000;
+}
+
+export function mm2ToCm2(mm2) {
+  return mm2 / 100;
 }

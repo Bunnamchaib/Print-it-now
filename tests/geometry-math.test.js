@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   computeBoundsFromPoints,
+  computeTriangleSurfaceArea,
   computeTriangleVolume,
   mmToCm3
 } from "../src/geometry-math.js";
@@ -45,4 +46,24 @@ test("computeTriangleVolume returns solid volume for a tetrahedron in cubic mill
 
 test("mmToCm3 converts cubic millimeters to cubic centimeters", () => {
   assert.equal(mmToCm3(2500), 2.5);
+});
+
+test("computeTriangleSurfaceArea returns the total mesh area in square millimeters", () => {
+  const points = [
+    0, 0, 0,
+    10, 0, 0,
+    0, 10, 0,
+    0, 0, 10
+  ];
+
+  const indices = [
+    0, 2, 1,
+    0, 1, 3,
+    0, 3, 2,
+    1, 2, 3
+  ];
+
+  const area = computeTriangleSurfaceArea(points, indices);
+
+  assert.ok(area > 236 && area < 237);
 });

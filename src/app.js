@@ -3,48 +3,84 @@ import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.179.1/exampl
 import { STLLoader } from "https://cdn.jsdelivr.net/npm/three@0.179.1/examples/jsm/loaders/STLLoader.js/+esm";
 import { OBJLoader } from "https://cdn.jsdelivr.net/npm/three@0.179.1/examples/jsm/loaders/OBJLoader.js/+esm";
 
-import { computeTriangleVolume } from "./geometry-math.js";
+import {
+  computeTriangleSurfaceArea,
+  computeTriangleVolume
+} from "./geometry-math.js";
+import {
+  getEnabledColors,
+  getEnabledMaterials,
+  getRuntimeConfig
+} from "./config-store.js";
+import { getQuoteAvailability } from "./quote-availability.js";
+import { buildQuoteQrPayload, serializeQuoteQrPayload } from "./quote-qr.js";
 import { estimatePrintJob } from "./quote-engine.js";
+import {
+  applyScaleToAreaMm2,
+  applyScaleToBounds,
+  applyScaleToVolumeMm3,
+  normalizeScaleInput
+} from "./scale-utils.js";
 import {
   formatFileSize,
   getModelFileKind,
   pickFirstModelFile
 } from "./upload-utils.js";
 
+const VIEW_PRESETS = {
+  top: new THREE.Vector3(0, 1, 0),
+  bottom: new THREE.Vector3(0, -1, 0),
+  front: new THREE.Vector3(0, 0, 1),
+  back: new THREE.Vector3(0, 0, -1),
+  left: new THREE.Vector3(-1, 0, 0),
+  right: new THREE.Vector3(1, 0, 0)
+};
+
 const state = {
+  busy: false,
+  config: getRuntimeConfig(),
   file: null,
-  modelRoot: null,
+  manualScale: 1,
   modelMetrics: null,
-  selectedMaterial: "pla",
-  selectedColor: { name: "White", value: "#f4f7fb" },
-  infillPercent: 20,
-  busy: false
+  modelRoot: null,
+  selectedColorId: null,
+  selectedMaterial: null
 };
 
 const elements = {
+  adminLink: document.querySelector(".admin-link"),
+  brandTitle: document.querySelector("#brand-title"),
+  brandSubcopy: document.querySelector("#brand-subcopy"),
+  calculateButton: document.querySelector("#calculate-button"),
+  canvas: document.querySelector("#viewer-canvas"),
+  colorContainer: document.querySelector("#color-options"),
   dropzone: document.querySelector("#dropzone"),
   dropzoneMeta: document.querySelector("#dropzone-meta"),
   fileInput: document.querySelector("#model-file"),
   fileName: document.querySelector("#file-name"),
-  previewStatus: document.querySelector("#preview-status"),
-  materialPreview: document.querySelector("#material-preview"),
-  metricSize: document.querySelector("#metric-size"),
-  metricVolume: document.querySelector("#metric-volume"),
-  metricWeight: document.querySelector("#metric-weight"),
-  metricTime: document.querySelector("#metric-time"),
-  summaryPrice: document.querySelector("#summary-price"),
-  summaryMessage: document.querySelector("#summary-message"),
-  warningBox: document.querySelector("#warning-box"),
-  materialButtons: [...document.querySelectorAll("[data-material]")],
-  colorButtons: [...document.querySelectorAll("[data-color-name]")],
   infillInput: document.querySelector("#infill-input"),
   infillValue: document.querySelector("#infill-value"),
-  calculateButton: document.querySelector("#calculate-button"),
-  canvas: document.querySelector("#viewer-canvas")
+  materialContainer: document.querySelector("#material-options"),
+  materialPreview: document.querySelector("#material-preview"),
+  metricSize: document.querySelector("#metric-size"),
+  metricTime: document.querySelector("#metric-time"),
+  metricVolume: document.querySelector("#metric-volume"),
+  metricWeight: document.querySelector("#metric-weight"),
+  previewStatus: document.querySelector("#preview-status"),
+  qrCanvas: document.querySelector("#quote-qr"),
+  qrNote: document.querySelector("#qr-note"),
+  qrPanel: document.querySelector("#qr-panel"),
+  scaleHint: document.querySelector("#scale-hint"),
+  scaleInput: document.querySelector("#scale-input"),
+  summaryMessage: document.querySelector("#summary-message"),
+  summaryPrice: document.querySelector("#summary-price"),
+  viewButtons: [...document.querySelectorAll("[data-view]")],
+  warningBox: document.querySelector("#warning-box")
 };
 
 const viewer = createViewer(elements.canvas);
 bindEvents();
+applyRuntimeConfig();
 renderIdleState();
 animate();
 
@@ -94,32 +130,21 @@ function bindEvents() {
     await handleSelectedFile(file);
   });
 
-  elements.materialButtons.forEach((button) => {
-    button.addEventListener("click", () => {
-      state.selectedMaterial = button.dataset.material;
-      toggleActive(elements.materialButtons, button);
-      updateMaterialPreview();
-      recalculateIfReady();
-    });
-  });
-
-  elements.colorButtons.forEach((button) => {
-    button.addEventListener("click", () => {
-      state.selectedColor = {
-        name: button.dataset.colorName,
-        value: button.dataset.color
-      };
-      toggleActive(elements.colorButtons, button);
-      updateMaterialPreview();
-      tintModel();
-      recalculateIfReady();
-    });
-  });
-
   elements.infillInput.addEventListener("input", () => {
-    state.infillPercent = Number(elements.infillInput.value);
-    elements.infillValue.textContent = `${state.infillPercent}%`;
+    elements.infillValue.textContent = `${elements.infillInput.value}%`;
     recalculateIfReady();
+  });
+
+  elements.scaleInput.addEventListener("input", () => {
+    state.manualScale = normalizeScaleInput(elements.scaleInput.value);
+    updateScaleHint();
+    applyManualScaleToModel();
+    recalculateIfReady();
+  });
+
+  elements.scaleInput.addEventListener("blur", () => {
+    elements.scaleInput.value = formatScaleValue(state.manualScale);
+    updateScaleHint();
   });
 
   elements.calculateButton.addEventListener("click", () => {
@@ -131,7 +156,99 @@ function bindEvents() {
     renderQuote();
   });
 
+  elements.viewButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      orientCamera(button.dataset.view);
+    });
+  });
+
   window.addEventListener("resize", () => viewer.resize());
+  window.addEventListener("storage", () => {
+    state.config = getRuntimeConfig();
+    applyRuntimeConfig();
+    recalculateIfReady();
+  });
+}
+
+function applyRuntimeConfig() {
+  const { brand } = state.config;
+  const enabledMaterials = getEnabledMaterials(state.config);
+  const enabledColors = getEnabledColors(state.config);
+
+  elements.brandTitle.textContent = brand.headline;
+  elements.brandSubcopy.textContent = brand.subcopy;
+  elements.adminLink.textContent = "-X";
+
+  if (!enabledMaterials.some((material) => material.key === state.selectedMaterial)) {
+    state.selectedMaterial = enabledMaterials[0]?.key ?? null;
+  }
+
+  if (!enabledColors.some((color) => color.id === state.selectedColorId)) {
+    state.selectedColorId = enabledColors[0]?.id ?? null;
+  }
+
+  renderMaterialButtons(enabledMaterials);
+  renderColorButtons(enabledColors);
+  updateMaterialPreview();
+  updateScaleHint();
+
+  if (enabledMaterials.length === 0) {
+    showWarning("ตอนนี้ยังไม่มี material ที่เปิดใช้งานอยู่");
+  } else if (enabledColors.length === 0) {
+    showWarning("ตอนนี้ยังไม่มีสีที่เปิดใช้งานอยู่");
+  }
+}
+
+function renderMaterialButtons(materials) {
+  elements.materialContainer.innerHTML = "";
+
+  for (const material of materials) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "pill-button";
+    button.dataset.material = material.key;
+    button.textContent = material.name;
+
+    if (material.key === state.selectedMaterial) {
+      button.classList.add("is-active");
+    }
+
+    button.addEventListener("click", () => {
+      state.selectedMaterial = material.key;
+      renderMaterialButtons(materials);
+      updateMaterialPreview();
+      recalculateIfReady();
+    });
+
+    elements.materialContainer.append(button);
+  }
+}
+
+function renderColorButtons(colors) {
+  elements.colorContainer.innerHTML = "";
+
+  for (const color of colors) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "color-button";
+    button.dataset.colorId = color.id;
+    button.title = color.name;
+    button.style.background = color.hex;
+
+    if (color.id === state.selectedColorId) {
+      button.classList.add("is-active");
+    }
+
+    button.addEventListener("click", () => {
+      state.selectedColorId = color.id;
+      renderColorButtons(colors);
+      updateMaterialPreview();
+      tintModel();
+      recalculateIfReady();
+    });
+
+    elements.colorContainer.append(button);
+  }
 }
 
 async function handleUnsupportedSelection() {
@@ -152,11 +269,11 @@ async function handleSelectedFile(file) {
     hideWarning();
     await loadFile(file, kind);
     renderQuote();
-    setBusyState(false, "พร้อมประเมิน");
+    setBusyState(false, state.modelMetrics.usedFallback ? "ต้องตรวจไฟล์" : "พร้อมประเมิน");
   } catch (error) {
     console.error(error);
-    state.modelMetrics = null;
     state.file = null;
+    state.modelMetrics = null;
     elements.fileName.textContent = "ยังไม่ได้เลือกไฟล์";
     elements.dropzoneMeta.textContent = "คลิกหรือวางไฟล์ที่นี่";
     clearModel();
@@ -194,8 +311,9 @@ async function loadFile(file, kind) {
   state.modelRoot = model;
   viewer.scene.add(model);
   setViewerPlaceholderVisible(false);
-  fitModelToView(model);
+  applyManualScaleToModel();
   tintModel();
+  updateScaleHint();
 }
 
 function computeModelMetrics(root) {
@@ -203,6 +321,7 @@ function computeModelMetrics(root) {
 
   const bounds = new THREE.Box3().setFromObject(root);
   const size = bounds.getSize(new THREE.Vector3());
+  let surfaceAreaMm2 = 0;
   let volumeMm3 = 0;
 
   root.traverse((child) => {
@@ -215,6 +334,7 @@ function computeModelMetrics(root) {
 
     const positions = Array.from(geometry.attributes.position.array);
     volumeMm3 += computeTriangleVolume(positions);
+    surfaceAreaMm2 += computeTriangleSurfaceArea(positions);
     geometry.dispose();
   });
 
@@ -230,42 +350,76 @@ function computeModelMetrics(root) {
       z: size.z
     },
     solidVolumeMm3,
+    surfaceAreaMm2,
     usedFallback
   };
 }
 
 function recalculateIfReady() {
-  if (!state.modelMetrics || state.busy) {
+  if (!state.modelMetrics || state.busy || !state.selectedMaterial) {
     return;
   }
 
   renderQuote();
 }
 
-function renderQuote() {
-  const quote = estimatePrintJob({
-    solidVolumeMm3: state.modelMetrics.solidVolumeMm3,
-    boundsMm: state.modelMetrics.boundsMm,
-    materialKey: state.selectedMaterial,
-    infillPercent: state.infillPercent
-  });
+function getScaledModelMetrics() {
+  if (!state.modelMetrics) {
+    return null;
+  }
 
-  elements.metricSize.textContent = formatSize(state.modelMetrics.boundsMm);
+  return {
+    boundsMm: applyScaleToBounds(state.modelMetrics.boundsMm, state.manualScale),
+    solidVolumeMm3: applyScaleToVolumeMm3(state.modelMetrics.solidVolumeMm3, state.manualScale),
+    surfaceAreaMm2: applyScaleToAreaMm2(state.modelMetrics.surfaceAreaMm2, state.manualScale)
+  };
+}
+
+function renderQuote() {
+  if (!state.selectedMaterial) {
+    showWarning("ยังไม่มี material ที่เปิดใช้งานอยู่");
+    clearQrCode();
+    return;
+  }
+
+  const scaledMetrics = getScaledModelMetrics();
+  elements.metricSize.textContent = formatSize(scaledMetrics.boundsMm);
+
+  const availability = getQuoteAvailability(state.modelMetrics);
+  if (!availability.canQuote) {
+    elements.metricVolume.textContent = "-";
+    elements.metricWeight.textContent = "-";
+    elements.metricTime.textContent = "-";
+    elements.summaryPrice.textContent = "THB -";
+    elements.summaryMessage.textContent = "ยังประเมินราคาอัตโนมัติไม่ได้";
+    clearQrCode();
+    showWarning(availability.message);
+    return;
+  }
+
+  const quote = estimatePrintJob(
+    {
+      solidVolumeMm3: scaledMetrics.solidVolumeMm3,
+      surfaceAreaMm2: scaledMetrics.surfaceAreaMm2,
+      boundsMm: scaledMetrics.boundsMm,
+      materialKey: state.selectedMaterial,
+      infillPercent: Number(elements.infillInput.value)
+    },
+    state.config
+  );
+
   elements.metricVolume.textContent = `${quote.solidVolumeCm3.toFixed(2)} cm3`;
   elements.metricWeight.textContent = `${quote.materialGrams.toFixed(1)} g`;
   elements.metricTime.textContent = formatHours(quote.printHours);
   elements.summaryPrice.textContent = `THB ${quote.totalPriceThb.toLocaleString()}`;
-  elements.summaryMessage.textContent = `${quote.material.name} • ${state.selectedColor.name} • infill ${state.infillPercent}%`;
+  elements.summaryMessage.textContent = `${quote.material.name} • ${getSelectedColor()?.name ?? "-"} • infill ${elements.infillInput.value}% • x${formatScaleValue(state.manualScale)}`;
 
-  if (state.modelMetrics.usedFallback) {
-    showWarning("ไฟล์นี้คำนวณ volume ตรงๆ ไม่ได้ ระบบเลยใช้การประเมินแบบเผื่อขาดทุน");
-  } else {
-    hideWarning();
-  }
+  renderQuoteQr(quote, scaledMetrics.boundsMm);
+  hideWarning();
 }
 
 function renderIdleState() {
-  updateMaterialPreview();
+  applyRuntimeConfig();
   setViewerPlaceholderVisible(true);
   renderIdleMetrics();
 }
@@ -274,17 +428,30 @@ function renderIdleMetrics() {
   elements.fileName.textContent = "ยังไม่ได้เลือกไฟล์";
   elements.previewStatus.textContent = "พร้อมอัปโหลด";
   elements.dropzoneMeta.textContent = "คลิกหรือวางไฟล์ที่นี่";
+  elements.infillValue.textContent = `${elements.infillInput.value}%`;
   elements.metricSize.textContent = "-";
   elements.metricVolume.textContent = "-";
   elements.metricWeight.textContent = "-";
   elements.metricTime.textContent = "-";
   elements.summaryPrice.textContent = "THB -";
   elements.summaryMessage.textContent = "อัปโหลดไฟล์ก่อน แล้วระบบจะประเมินให้อัตโนมัติ";
+  updateMaterialPreview();
+  updateScaleHint();
+  clearQrCode();
 }
 
 function updateMaterialPreview() {
-  const materialLabel = state.selectedMaterial.toUpperCase();
-  elements.materialPreview.textContent = `${materialLabel} / ${state.selectedColor.name}`;
+  const material = state.config.materials[state.selectedMaterial];
+  const color = getSelectedColor();
+  elements.materialPreview.textContent = `${material?.name ?? "-"} / ${color?.name ?? "-"}`;
+}
+
+function getSelectedColor() {
+  return state.config.colors.find((color) => color.id === state.selectedColorId) ?? null;
+}
+
+function getSelectedColorHex() {
+  return getSelectedColor()?.hex ?? "#f4f7fb";
 }
 
 function setBusyState(isBusy, statusText) {
@@ -292,12 +459,6 @@ function setBusyState(isBusy, statusText) {
   elements.previewStatus.textContent = statusText;
   elements.calculateButton.disabled = isBusy;
   elements.calculateButton.textContent = isBusy ? "กำลังประมวลผล..." : "ประเมินราคา";
-}
-
-function toggleActive(buttons, activeButton) {
-  buttons.forEach((button) => {
-    button.classList.toggle("is-active", button === activeButton);
-  });
 }
 
 function showWarning(message) {
@@ -310,9 +471,69 @@ function hideWarning() {
   elements.warningBox.textContent = "";
 }
 
+function renderQuoteQr(quote, boundsMm) {
+  if (!elements.qrCanvas || !elements.qrPanel) {
+    return;
+  }
+
+  const color = getSelectedColor();
+  const payload = buildQuoteQrPayload({
+    fileName: state.file?.name ?? "model",
+    materialKey: state.selectedMaterial,
+    materialName: quote.material.name,
+    colorId: color?.id ?? "unknown",
+    colorName: color?.name ?? "-",
+    infillPercent: Number(elements.infillInput.value),
+    scale: state.manualScale,
+    boundsMm,
+    quote,
+    generatedAt: new Date().toISOString()
+  });
+  const serializedPayload = serializeQuoteQrPayload(payload);
+
+  elements.qrPanel.hidden = false;
+  elements.qrNote.textContent = `${state.file?.name ?? "model"} • THB ${quote.totalPriceThb.toLocaleString()} • x${formatScaleValue(state.manualScale)}`;
+
+  if (!window.QRCode?.toCanvas) {
+    elements.qrNote.textContent = "QR library unavailable in this browser.";
+    return;
+  }
+
+  window.QRCode.toCanvas(
+    elements.qrCanvas,
+    serializedPayload,
+    {
+      width: 220,
+      margin: 1,
+      errorCorrectionLevel: "M",
+      color: {
+        dark: "#081015",
+        light: "#ffffff"
+      }
+    },
+    (error) => {
+      if (error) {
+        console.error(error);
+        elements.qrNote.textContent = "QR generation failed. Please try again.";
+      }
+    }
+  );
+}
+
+function clearQrCode() {
+  if (!elements.qrCanvas || !elements.qrPanel) {
+    return;
+  }
+
+  const context = elements.qrCanvas.getContext("2d");
+  context?.clearRect(0, 0, elements.qrCanvas.width, elements.qrCanvas.height);
+  elements.qrPanel.hidden = true;
+  elements.qrNote.textContent = "QR will appear after a valid quote.";
+}
+
 function makeModelMaterial() {
   return new THREE.MeshStandardMaterial({
-    color: state.selectedColor.value,
+    color: getSelectedColorHex(),
     roughness: 0.42,
     metalness: 0.08
   });
@@ -330,10 +551,22 @@ function prepareObjectMaterials(root) {
 function tintModel() {
   if (!state.modelRoot) return;
 
+  const nextColor = getSelectedColorHex();
+
   state.modelRoot.traverse((child) => {
     if (!child.isMesh || !child.material?.color) return;
-    child.material.color.set(state.selectedColor.value);
+    child.material.color.set(nextColor);
   });
+}
+
+function applyManualScaleToModel() {
+  if (!state.modelRoot) {
+    return;
+  }
+
+  state.modelRoot.scale.setScalar(state.manualScale);
+  state.modelRoot.updateMatrixWorld(true);
+  fitModelToView(state.modelRoot);
 }
 
 function clearModel() {
@@ -366,15 +599,27 @@ function fitModelToView(root) {
   const maxDim = Math.max(size.x, size.y, size.z);
   const distance = maxDim * 1.8 || 120;
 
+  viewer.fitDistance = distance;
+  viewer.fitCenter.copy(center);
   viewer.controls.target.copy(center);
-  viewer.camera.position.set(
-    center.x + distance,
-    center.y + distance * 0.5,
-    center.z + distance
-  );
+  viewer.camera.position.set(center.x + distance, center.y + distance * 0.5, center.z + distance);
   viewer.camera.near = Math.max(0.1, maxDim / 100);
   viewer.camera.far = Math.max(1000, maxDim * 20);
   viewer.camera.updateProjectionMatrix();
+  viewer.controls.update();
+}
+
+function orientCamera(viewKey) {
+  const direction = VIEW_PRESETS[viewKey];
+  if (!direction) return;
+
+  const center = viewer.fitCenter.clone();
+  const distance = viewer.fitDistance || 120;
+  const nextPosition = center.clone().add(direction.clone().multiplyScalar(distance));
+
+  viewer.controls.target.copy(center);
+  viewer.camera.position.copy(nextPosition);
+  viewer.camera.lookAt(center);
   viewer.controls.update();
 }
 
@@ -440,12 +685,14 @@ function createViewer(canvas) {
   resize();
 
   return {
-    renderer,
-    scene,
     camera,
     controls,
+    fitCenter: new THREE.Vector3(),
+    fitDistance: 120,
     placeholder,
-    resize
+    renderer,
+    resize,
+    scene
   };
 }
 
@@ -459,6 +706,25 @@ function animate() {
 
   viewer.controls.update();
   viewer.renderer.render(viewer.scene, viewer.camera);
+}
+
+function updateScaleHint() {
+  if (!elements.scaleHint) {
+    return;
+  }
+
+  if (!state.modelMetrics) {
+    elements.scaleHint.textContent = `Scale x${formatScaleValue(state.manualScale)} from uploaded size`;
+    return;
+  }
+
+  const originalHeightCm = state.modelMetrics.boundsMm.z / 10;
+  const scaledHeightCm = originalHeightCm * state.manualScale;
+  elements.scaleHint.textContent = `Height ${originalHeightCm.toFixed(1)} cm -> ${scaledHeightCm.toFixed(1)} cm`;
+}
+
+function formatScaleValue(scale) {
+  return Number(scale.toFixed(2)).toString();
 }
 
 function formatSize(boundsMm) {

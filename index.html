@@ -17,9 +17,10 @@
       <header class="topbar">
         <div class="brand-block">
           <p class="eyebrow">Print It Now</p>
-          <h1>ประเมินราคางานพิมพ์ 3 มิติ</h1>
-          <p class="subcopy">อัปโหลด STL หรือ OBJ แล้วดูขนาด น้ำหนัก เวลา และราคาทันที</p>
+          <h1 id="brand-title">ประเมินราคาชิ้นงาน</h1>
+          <p class="subcopy" id="brand-subcopy">อัปโหลด STL หรือ OBJ แล้วดูขนาด น้ำหนัก เวลา และราคาทันที</p>
         </div>
+        <a class="admin-link" href="./admin-x.html">-X</a>
       </header>
 
       <main class="workspace">
@@ -34,6 +35,14 @@
 
           <div class="viewer-stage">
             <canvas id="viewer-canvas"></canvas>
+            <div class="view-nav" aria-label="View navigation">
+              <button class="view-nav-button" type="button" data-view="top">TOP</button>
+              <button class="view-nav-button" type="button" data-view="bottom">BOTTOM</button>
+              <button class="view-nav-button" type="button" data-view="front">FRONT</button>
+              <button class="view-nav-button" type="button" data-view="back">BACK</button>
+              <button class="view-nav-button" type="button" data-view="left">LEFT</button>
+              <button class="view-nav-button" type="button" data-view="right">RIGHT</button>
+            </div>
           </div>
         </section>
 
@@ -51,10 +60,7 @@
               <div class="group-head">
                 <span class="group-label">วัสดุ</span>
               </div>
-              <div class="material-row" id="material-options">
-                <button class="pill-button is-active" type="button" data-material="pla">PLA</button>
-                <button class="pill-button" type="button" data-material="petg">PETG</button>
-              </div>
+              <div class="material-row" id="material-options"></div>
             </section>
 
             <section class="control-group">
@@ -62,12 +68,7 @@
                 <span class="group-label">สี</span>
                 <span class="group-value" id="material-preview">PLA / White</span>
               </div>
-              <div class="color-row" id="color-options">
-                <button class="color-button is-active" type="button" data-color-name="White" data-color="#f4f7fb" style="background:#f4f7fb"></button>
-                <button class="color-button" type="button" data-color-name="Black" data-color="#11151a" style="background:#11151a"></button>
-                <button class="color-button" type="button" data-color-name="Red" data-color="#cf3a43" style="background:#cf3a43"></button>
-                <button class="color-button" type="button" data-color-name="Blue" data-color="#3d74e7" style="background:#3d74e7"></button>
-              </div>
+              <div class="color-row" id="color-options"></div>
             </section>
 
             <section class="control-group">
@@ -77,6 +78,17 @@
               </div>
               <input id="infill-input" type="range" min="10" max="40" step="5" value="20">
             </section>
+
+            <details class="advanced-panel">
+              <summary>Advance</summary>
+              <div class="advanced-content">
+                <div class="form-row">
+                  <label for="scale-input">Manual Scale (x)</label>
+                  <input class="number-input" id="scale-input" type="number" min="0.1" max="10" step="0.1" value="1">
+                </div>
+                <p class="helper-text" id="scale-hint">Height -</p>
+              </div>
+            </details>
 
             <button class="action-button" id="calculate-button" type="button">
               ประเมินราคา
@@ -108,6 +120,17 @@
                 </article>
               </div>
 
+              <section class="qr-panel" id="qr-panel" hidden>
+                <div class="group-head">
+                  <span class="group-label">QR Quote</span>
+                  <span class="group-value">Capture and send</span>
+                </div>
+                <div class="qr-card">
+                  <canvas id="quote-qr" width="220" height="220"></canvas>
+                  <p class="qr-note" id="qr-note">QR will appear after a valid quote.</p>
+                </div>
+              </section>
+
               <div class="warning-box" id="warning-box" hidden></div>
             </section>
           </div>
@@ -115,6 +138,7 @@
       </main>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
     <script type="module" src="./src/app.js"></script>
   </body>
 </html>

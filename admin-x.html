@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="th">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Print It Now - Admin X</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@500;700&family=Inter:wght@400;500;700;800&family=JetBrains+Mono:wght@500&display=swap"
+      rel="stylesheet"
+    >
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body class="admin-page">
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-block">
+          <p class="eyebrow">Print It Now</p>
+          <h1>Admin -X</h1>
+          <p class="subcopy">จัดการตัวคูณราคา วัสดุ และสีที่เปิดให้ลูกค้าเลือก</p>
+        </div>
+        <a class="admin-link" href="./index.html">กลับหน้าเว็บ</a>
+      </header>
+
+      <main class="admin-grid">
+        <section class="panel admin-panel login-card" id="login-panel">
+          <form class="admin-form" id="login-form">
+            <div class="form-row">
+              <label for="admin-username">Username</label>
+              <input class="text-input" id="admin-username" name="username" type="text" autocomplete="username">
+            </div>
+            <div class="form-row">
+              <label for="admin-password">Password</label>
+              <input class="password-input" id="admin-password" name="password" type="password" autocomplete="current-password">
+            </div>
+            <button class="action-button" type="submit">เข้าสู่ระบบ</button>
+            <div class="warning-box" id="login-error" hidden></div>
+          </form>
+        </section>
+
+        <section class="panel admin-panel" id="settings-panel" hidden>
+          <div class="settings-grid">
+            <div class="admin-actions">
+              <button class="action-button" id="save-config-button" type="button">บันทึกค่า</button>
+              <button class="secondary-button" id="reset-config-button" type="button">รีเซ็ตค่าเริ่มต้น</button>
+              <button class="secondary-button" id="logout-button" type="button">ออกจากระบบ</button>
+            </div>
+
+            <section class="settings-section">
+              <p class="section-heading">หัวเว็บ</p>
+              <div class="field-grid">
+                <div class="form-row">
+                  <label for="brand-headline">หัวข้อหลัก</label>
+                  <input class="text-input" id="brand-headline" type="text">
+                </div>
+                <div class="form-row">
+                  <label for="brand-subcopy">คำอธิบายสั้น</label>
+                  <input class="text-input" id="brand-subcopy" type="text">
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-section">
+              <p class="section-heading">ตัวคูณราคา</p>
+              <div class="field-grid">
+                <div class="form-row"><label for="setup-fee">ค่าเริ่มต้น</label><input class="number-input" id="setup-fee" type="number" step="1"></div>
+                <div class="form-row"><label for="minimum-charge">ราคาขั้นต่ำ</label><input class="number-input" id="minimum-charge" type="number" step="1"></div>
+                <div class="form-row"><label for="round-to">ปัดราคาขึ้นทีละ</label><input class="number-input" id="round-to" type="number" step="1"></div>
+                <div class="form-row"><label for="waste-multiplier">ตัวคูณเผื่อเสีย</label><input class="number-input" id="waste-multiplier" type="number" step="0.01"></div>
+                <div class="form-row"><label for="support-percent">Support % (hidden)</label><input class="number-input" id="support-percent" type="number" step="0.1"></div>
+                <div class="form-row"><label for="markup-multiplier">ตัวคูณกำไร</label><input class="number-input" id="markup-multiplier" type="number" step="0.01"></div>
+                <div class="form-row"><label for="time-rate">ราคาต่อชั่วโมง</label><input class="number-input" id="time-rate" type="number" step="0.01"></div>
+                <div class="form-row"><label for="volume-rate">คูณปริมาตร / cm3</label><input class="number-input" id="volume-rate" type="number" step="0.01"></div>
+                <div class="form-row"><label for="surface-rate">คูณพื้นผิว / cm2</label><input class="number-input" id="surface-rate" type="number" step="0.01"></div>
+                <div class="form-row"><label for="infill-rate">คูณ infill / %</label><input class="number-input" id="infill-rate" type="number" step="0.01"></div>
+                <div class="form-row"><label for="base-shell-fraction">Shell fraction</label><input class="number-input" id="base-shell-fraction" type="number" step="0.01"></div>
+                <div class="form-row"><label for="infill-influence">Infill influence</label><input class="number-input" id="infill-influence" type="number" step="0.01"></div>
+                <div class="form-row"><label for="layer-height">Layer height (mm)</label><input class="number-input" id="layer-height" type="number" step="0.01"></div>
+                <div class="form-row"><label for="seconds-per-layer">วินาทีต่อเลเยอร์</label><input class="number-input" id="seconds-per-layer" type="number" step="0.1"></div>
+              </div>
+            </section>
+
+            <section class="settings-section">
+              <div class="group-head">
+                <p class="section-heading">วัสดุ</p>
+              </div>
+              <div class="material-admin-grid" id="material-admin-grid"></div>
+            </section>
+
+            <section class="settings-section">
+              <p class="section-heading">สีพลาสติก</p>
+              <div class="color-admin-grid" id="color-admin-grid"></div>
+            </section>
+
+            <section class="settings-section">
+              <p class="helper-text">ค่าที่บันทึกจะมีผลกับหน้าเว็บในเบราว์เซอร์นี้ทันที</p>
+              <div class="warning-box" id="save-message" hidden></div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="./src/admin.js"></script>
+  </body>
+</html>
