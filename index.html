@@ -76,7 +76,7 @@
                 <span class="group-label">Infill</span>
                 <span class="group-value" id="infill-value">20%</span>
               </div>
-              <input id="infill-input" type="range" min="10" max="40" step="5" value="20">
+              <input id="infill-input" type="range" min="15" max="80" step="5" value="20">
             </section>
 
             <details class="advanced-panel">
@@ -86,7 +86,15 @@
                   <label for="scale-input">Manual Scale (x)</label>
                   <input class="number-input" id="scale-input" type="number" min="0.1" max="10" step="0.1" value="1">
                 </div>
+                <section class="control-group">
+                  <div class="group-head">
+                    <span class="group-label">ความละเอียด</span>
+                    <span class="group-value" id="layer-height-value">0.20 mm</span>
+                  </div>
+                  <div class="material-row" id="layer-height-options"></div>
+                </section>
                 <p class="helper-text" id="scale-hint">Height -</p>
+                <button class="secondary-button" id="clear-advanced-button" type="button">ล้างค่า</button>
               </div>
             </details>
 
@@ -120,25 +128,36 @@
                 </article>
               </div>
 
-              <section class="qr-panel" id="qr-panel" hidden>
-                <div class="group-head">
-                  <span class="group-label">QR Quote</span>
-                  <span class="group-value">Capture and send</span>
-                </div>
-                <div class="qr-card">
-                  <canvas id="quote-qr" width="220" height="220"></canvas>
-                  <p class="qr-note" id="qr-note">QR will appear after a valid quote.</p>
-                </div>
-              </section>
+              <button class="secondary-button" id="queue-add-button" type="button" disabled>เพิ่มลงรายการที่จะผลิต</button>
 
               <div class="warning-box" id="warning-box" hidden></div>
+            </section>
+
+            <section class="result-panel queue-panel">
+              <div class="group-head">
+                <span class="group-label">รายการที่จะผลิต</span>
+                <span class="group-value" id="queue-count">0 รายการ</span>
+              </div>
+              <div class="queue-list" id="queue-list">
+                <p class="summary-subtext">ยังไม่มีรายการที่บันทึกไว้ในเครื่องนี้</p>
+              </div>
             </section>
           </div>
         </aside>
       </main>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+    <div class="modal-shell" id="tally-modal" hidden>
+      <div class="modal-backdrop" data-close-modal="true"></div>
+      <section class="modal-card">
+        <div class="group-head">
+          <span class="group-label">Send to print</span>
+          <button class="secondary-button modal-close" id="tally-close-button" type="button">ปิด</button>
+        </div>
+        <iframe class="tally-frame" id="tally-frame" title="Tally form"></iframe>
+      </section>
+    </div>
+
     <script type="module" src="./src/app.js"></script>
   </body>
 </html>

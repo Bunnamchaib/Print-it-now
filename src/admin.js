@@ -17,6 +17,7 @@ const elements = {
   brandSubcopy: document.querySelector("#brand-subcopy"),
   brandTitle: document.querySelector("h1"),
   colorGrid: document.querySelector("#color-admin-grid"),
+  tallyFormUrl: document.querySelector("#tally-form-url"),
   fieldMap: {
     setupFeeThb: document.querySelector("#setup-fee"),
     minimumChargeThb: document.querySelector("#minimum-charge"),
@@ -98,10 +99,11 @@ function render() {
 }
 
 function renderSettings() {
-  const { brand, pricing, materials, colors } = state.config;
+  const { brand, pricing, materials, colors, integrations } = state.config;
 
   elements.brandHeadline.value = brand.headline;
   elements.brandSubcopy.value = brand.subcopy;
+  elements.tallyFormUrl.value = integrations?.tallyFormUrl ?? "";
 
   for (const [key, element] of Object.entries(elements.fieldMap)) {
     element.value = pricing[key];
@@ -185,6 +187,7 @@ function collectConfigFromForm() {
 
   nextConfig.brand.headline = elements.brandHeadline.value.trim() || DEFAULT_SITE_CONFIG.brand.headline;
   nextConfig.brand.subcopy = elements.brandSubcopy.value.trim() || DEFAULT_SITE_CONFIG.brand.subcopy;
+  nextConfig.integrations.tallyFormUrl = elements.tallyFormUrl.value.trim();
 
   for (const [key, element] of Object.entries(elements.fieldMap)) {
     nextConfig.pricing[key] = Number(element.value);

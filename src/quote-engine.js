@@ -21,8 +21,9 @@ export function estimatePrintJob(input, siteConfig = DEFAULT_SITE_CONFIG) {
   const pricing = siteConfig.pricing ?? DEFAULT_MACHINE_PROFILE;
   const materials = siteConfig.materials ?? MATERIALS;
   const material = materials[input.materialKey] ?? materials.pla ?? Object.values(materials)[0];
-  const infillPercent = clamp(input.infillPercent ?? 20, 10, 60);
+  const infillPercent = clamp(input.infillPercent ?? 20, 15, 80);
   const supportPercent = Math.max(pricing.supportPercent ?? 0, 0);
+  const layerHeightMm = Math.max(input.layerHeightMm ?? pricing.layerHeightMm, 0.01);
   const solidVolumeMm3 = Math.max(input.solidVolumeMm3 ?? 0, 0);
   const surfaceAreaMm2 = Math.max(input.surfaceAreaMm2 ?? 0, 0);
   const solidVolumeCm3 = mmToCm3(solidVolumeMm3);
@@ -39,7 +40,7 @@ export function estimatePrintJob(input, siteConfig = DEFAULT_SITE_CONFIG) {
   const materialGrams = materialVolumeCm3 * material.densityGPerCm3;
   const materialCostThb = materialGrams * material.pricePerGramThb;
 
-  const layerCount = (input.boundsMm?.z ?? 0) / pricing.layerHeightMm;
+  const layerCount = (input.boundsMm?.z ?? 0) / layerHeightMm;
   const extrusionHours =
     (materialVolumeCm3 * 1000) / (material.volumetricFlowMm3PerSecond * 3600);
   const layerOverheadHours =
@@ -77,6 +78,7 @@ export function estimatePrintJob(input, siteConfig = DEFAULT_SITE_CONFIG) {
     volumeCostThb: roundTo(volumeCostThb),
     surfaceCostThb: roundTo(surfaceCostThb),
     infillCostThb: roundTo(infillCostThb),
+    layerHeightMm: roundTo(layerHeightMm, 3),
     totalPriceThb
   };
 }

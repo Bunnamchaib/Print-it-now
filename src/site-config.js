@@ -8,6 +8,9 @@ export const DEFAULT_SITE_CONFIG = {
     username: "bunnamchai",
     password: "7321"
   },
+  integrations: {
+    tallyFormUrl: ""
+  },
   pricing: {
     setupFeeThb: 35,
     minimumChargeThb: 120,
@@ -23,6 +26,9 @@ export const DEFAULT_SITE_CONFIG = {
     infillInfluence: 0.72,
     layerHeightMm: 0.2,
     secondsPerLayer: 6
+  },
+  printOptions: {
+    layerHeightOptionsMm: [0.16, 0.2, 0.24]
   },
   materials: {
     pla: {

@@ -113,3 +113,75 @@ test("estimatePrintJob folds hidden support percent into total material usage", 
   assert.equal(result.materialGrams, 11);
   assert.equal(result.supportVolumeCm3, 1);
 });
+
+test("estimatePrintJob clamps infill to 15 through 80 percent", () => {
+  const customConfig = structuredClone(DEFAULT_SITE_CONFIG);
+  customConfig.pricing.supportPercent = 0;
+  customConfig.pricing.wasteMultiplier = 1;
+  customConfig.pricing.baseShellFraction = 0.2;
+  customConfig.pricing.infillInfluence = 0.5;
+  customConfig.pricing.secondsPerLayer = 0;
+  customConfig.pricing.timeRateThbPerHour = 0;
+  customConfig.pricing.minimumChargeThb = 0;
+  customConfig.pricing.roundToThb = 1;
+  customConfig.pricing.markupMultiplier = 1;
+  customConfig.pricing.setupFeeThb = 0;
+  customConfig.pricing.volumeRateThbPerCm3 = 0;
+  customConfig.pricing.surfaceRateThbPerCm2 = 0;
+  customConfig.pricing.infillRateThbPerPercent = 0;
+  customConfig.materials.pla.pricePerGramThb = 0;
+
+  const low = estimatePrintJob({
+    solidVolumeMm3: 20000,
+    surfaceAreaMm2: 500,
+    boundsMm: { x: 20, y: 20, z: 20 },
+    materialKey: "pla",
+    infillPercent: 0
+  }, customConfig);
+
+  const high = estimatePrintJob({
+    solidVolumeMm3: 20000,
+    surfaceAreaMm2: 500,
+    boundsMm: { x: 20, y: 20, z: 20 },
+    materialKey: "pla",
+    infillPercent: 100
+  }, customConfig);
+
+  assert.equal(low.materialVolumeCm3, 5.6);
+  assert.equal(high.materialVolumeCm3, 12);
+});
+
+test("estimatePrintJob uses selected layer height to change print time", () => {
+  const customConfig = structuredClone(DEFAULT_SITE_CONFIG);
+  customConfig.pricing.supportPercent = 0;
+  customConfig.pricing.secondsPerLayer = 12;
+  customConfig.pricing.timeRateThbPerHour = 0;
+  customConfig.pricing.minimumChargeThb = 0;
+  customConfig.pricing.roundToThb = 1;
+  customConfig.pricing.markupMultiplier = 1;
+  customConfig.pricing.setupFeeThb = 0;
+  customConfig.pricing.volumeRateThbPerCm3 = 0;
+  customConfig.pricing.surfaceRateThbPerCm2 = 0;
+  customConfig.pricing.infillRateThbPerPercent = 0;
+  customConfig.materials.pla.pricePerGramThb = 0;
+
+  const fine = estimatePrintJob({
+    solidVolumeMm3: 20000,
+    surfaceAreaMm2: 500,
+    boundsMm: { x: 20, y: 20, z: 60 },
+    materialKey: "pla",
+    infillPercent: 20,
+    layerHeightMm: 0.16
+  }, customConfig);
+
+  const coarse = estimatePrintJob({
+    solidVolumeMm3: 20000,
+    surfaceAreaMm2: 500,
+    boundsMm: { x: 20, y: 20, z: 60 },
+    materialKey: "pla",
+    infillPercent: 20,
+    layerHeightMm: 0.24
+  }, customConfig);
+
+  assert.ok(fine.printHours > coarse.printHours);
+});

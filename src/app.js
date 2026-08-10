@@ -13,7 +13,15 @@ import {
   getRuntimeConfig
 } from "./config-store.js";
 import { getQuoteAvailability } from "./quote-availability.js";
-import { buildQuoteQrPayload, serializeQuoteQrPayload } from "./quote-qr.js";
+import {
+  addProductionQueueItem,
+  readProductionQueue,
+  removeProductionQueueItem
+} from "./production-queue.js";
+import {
+  buildPrintRequestItem,
+  buildTallySubmissionUrl
+} from "./quote-request.js";
 import { estimatePrintJob } from "./quote-engine.js";
 import {
   applyScaleToAreaMm2,
@@ -21,6 +29,10 @@ import {
   applyScaleToVolumeMm3,
   normalizeScaleInput
 } from "./scale-utils.js";
+import {
+  formatLayerHeight,
+  getLayerHeightLabel
+} from "./layer-height.js";
 import {
   formatFileSize,
   getModelFileKind,
@@ -36,14 +48,20 @@ const VIEW_PRESETS = {
   right: new THREE.Vector3(1, 0, 0)
 };
 
+const DEFAULT_LAYER_HEIGHT_OPTIONS = [0.16, 0.2, 0.24];
+
 const state = {
   busy: false,
   config: getRuntimeConfig(),
   file: null,
+  lastQuote: null,
+  lastQuoteBoundsMm: null,
   manualScale: 1,
   modelMetrics: null,
   modelRoot: null,
+  productionQueue: readProductionQueue(),
   selectedColorId: null,
+  selectedLayerHeight: getRuntimeConfig().pricing.layerHeightMm,
   selectedMaterial: null
 };
 
@@ -60,6 +78,8 @@ const elements = {
   fileName: document.querySelector("#file-name"),
   infillInput: document.querySelector("#infill-input"),
   infillValue: document.querySelector("#infill-value"),
+  layerHeightContainer: document.querySelector("#layer-height-options"),
+  layerHeightValue: document.querySelector("#layer-height-value"),
   materialContainer: document.querySelector("#material-options"),
   materialPreview: document.querySelector("#material-preview"),
   metricSize: document.querySelector("#metric-size"),
@@ -67,13 +87,17 @@ const elements = {
   metricVolume: document.querySelector("#metric-volume"),
   metricWeight: document.querySelector("#metric-weight"),
   previewStatus: document.querySelector("#preview-status"),
-  qrCanvas: document.querySelector("#quote-qr"),
-  qrNote: document.querySelector("#qr-note"),
-  qrPanel: document.querySelector("#qr-panel"),
+  queueAddButton: document.querySelector("#queue-add-button"),
+  queueCount: document.querySelector("#queue-count"),
+  queueList: document.querySelector("#queue-list"),
   scaleHint: document.querySelector("#scale-hint"),
   scaleInput: document.querySelector("#scale-input"),
+  clearAdvancedButton: document.querySelector("#clear-advanced-button"),
   summaryMessage: document.querySelector("#summary-message"),
   summaryPrice: document.querySelector("#summary-price"),
+  tallyCloseButton: document.querySelector("#tally-close-button"),
+  tallyFrame: document.querySelector("#tally-frame"),
+  tallyModal: document.querySelector("#tally-modal"),
   viewButtons: [...document.querySelectorAll("[data-view]")],
   warningBox: document.querySelector("#warning-box")
 };
@@ -135,6 +159,11 @@ function bindEvents() {
     recalculateIfReady();
   });
 
+  elements.clearAdvancedButton.addEventListener("click", () => {
+    resetAdvancedControls();
+    recalculateIfReady();
+  });
+
   elements.scaleInput.addEventListener("input", () => {
     state.manualScale = normalizeScaleInput(elements.scaleInput.value);
     updateScaleHint();
@@ -156,6 +185,18 @@ function bindEvents() {
     renderQuote();
   });
 
+  elements.queueAddButton.addEventListener("click", () => {
+    addCurrentQuoteToQueue();
+  });
+
+  elements.tallyCloseButton.addEventListener("click", closeTallyModal);
+  elements.tallyModal.addEventListener("click", (event) => {
+    const target = event.target;
+    if (target instanceof HTMLElement && target.dataset.closeModal === "true") {
+      closeTallyModal();
+    }
+  });
+
   elements.viewButtons.forEach((button) => {
     button.addEventListener("click", () => {
       orientCamera(button.dataset.view);
@@ -165,15 +206,17 @@ function bindEvents() {
   window.addEventListener("resize", () => viewer.resize());
   window.addEventListener("storage", () => {
     state.config = getRuntimeConfig();
+    state.productionQueue = readProductionQueue();
     applyRuntimeConfig();
     recalculateIfReady();
   });
 }
 
 function applyRuntimeConfig() {
-  const { brand } = state.config;
+  const { brand, printOptions, pricing } = state.config;
   const enabledMaterials = getEnabledMaterials(state.config);
   const enabledColors = getEnabledColors(state.config);
+  const layerHeightOptions = printOptions?.layerHeightOptionsMm ?? DEFAULT_LAYER_HEIGHT_OPTIONS;
 
   elements.brandTitle.textContent = brand.headline;
   elements.brandSubcopy.textContent = brand.subcopy;
@@ -189,8 +232,15 @@ function applyRuntimeConfig() {
 
   renderMaterialButtons(enabledMaterials);
   renderColorButtons(enabledColors);
+  renderLayerHeightButtons(layerHeightOptions);
   updateMaterialPreview();
   updateScaleHint();
+  elements.scaleInput.value = formatScaleValue(state.manualScale);
+  if (!layerHeightOptions.includes(state.selectedLayerHeight)) {
+    state.selectedLayerHeight = pricing.layerHeightMm;
+  }
+  elements.layerHeightValue.textContent = formatLayerHeight(state.selectedLayerHeight);
+  renderProductionQueue();
 
   if (enabledMaterials.length === 0) {
     showWarning("ตอนนี้ยังไม่มี material ที่เปิดใช้งานอยู่");
@@ -248,6 +298,32 @@ function renderColorButtons(colors) {
     });
 
     elements.colorContainer.append(button);
+  }
+}
+
+function renderLayerHeightButtons(options) {
+  elements.layerHeightContainer.innerHTML = "";
+
+  const uniqueOptions = [...new Set(options)].sort((left, right) => left - right);
+  for (const option of uniqueOptions) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "pill-button";
+    button.dataset.layerHeight = String(option);
+    button.textContent = getLayerHeightLabel(option);
+
+    if (option === state.selectedLayerHeight) {
+      button.classList.add("is-active");
+    }
+
+    button.addEventListener("click", () => {
+      state.selectedLayerHeight = option;
+      renderLayerHeightButtons(uniqueOptions);
+      elements.layerHeightValue.textContent = formatLayerHeight(option);
+      recalculateIfReady();
+    });
+
+    elements.layerHeightContainer.append(button);
   }
 }
 
@@ -378,7 +454,7 @@ function getScaledModelMetrics() {
 function renderQuote() {
   if (!state.selectedMaterial) {
     showWarning("ยังไม่มี material ที่เปิดใช้งานอยู่");
-    clearQrCode();
+    clearCurrentQuote();
     return;
   }
 
@@ -392,7 +468,7 @@ function renderQuote() {
     elements.metricTime.textContent = "-";
     elements.summaryPrice.textContent = "THB -";
     elements.summaryMessage.textContent = "ยังประเมินราคาอัตโนมัติไม่ได้";
-    clearQrCode();
+    clearCurrentQuote();
     showWarning(availability.message);
     return;
   }
@@ -403,7 +479,8 @@ function renderQuote() {
       surfaceAreaMm2: scaledMetrics.surfaceAreaMm2,
       boundsMm: scaledMetrics.boundsMm,
       materialKey: state.selectedMaterial,
-      infillPercent: Number(elements.infillInput.value)
+      infillPercent: Number(elements.infillInput.value),
+      layerHeightMm: state.selectedLayerHeight
     },
     state.config
   );
@@ -412,9 +489,11 @@ function renderQuote() {
   elements.metricWeight.textContent = `${quote.materialGrams.toFixed(1)} g`;
   elements.metricTime.textContent = formatHours(quote.printHours);
   elements.summaryPrice.textContent = `THB ${quote.totalPriceThb.toLocaleString()}`;
-  elements.summaryMessage.textContent = `${quote.material.name} • ${getSelectedColor()?.name ?? "-"} • infill ${elements.infillInput.value}% • x${formatScaleValue(state.manualScale)}`;
+  elements.summaryMessage.textContent = `${quote.material.name} • ${getSelectedColor()?.name ?? "-"} • infill ${elements.infillInput.value}% • x${formatScaleValue(state.manualScale)} • ${formatLayerHeight(state.selectedLayerHeight)}`;
 
-  renderQuoteQr(quote, scaledMetrics.boundsMm);
+  state.lastQuote = quote;
+  state.lastQuoteBoundsMm = scaledMetrics.boundsMm;
+  elements.queueAddButton.disabled = false;
   hideWarning();
 }
 
@@ -437,7 +516,7 @@ function renderIdleMetrics() {
   elements.summaryMessage.textContent = "อัปโหลดไฟล์ก่อน แล้วระบบจะประเมินให้อัตโนมัติ";
   updateMaterialPreview();
   updateScaleHint();
-  clearQrCode();
+  clearCurrentQuote();
 }
 
 function updateMaterialPreview() {
@@ -471,64 +550,101 @@ function hideWarning() {
   elements.warningBox.textContent = "";
 }
 
-function renderQuoteQr(quote, boundsMm) {
-  if (!elements.qrCanvas || !elements.qrPanel) {
+function clearCurrentQuote() {
+  state.lastQuote = null;
+  state.lastQuoteBoundsMm = null;
+  elements.queueAddButton.disabled = true;
+}
+
+function resetAdvancedControls() {
+  state.manualScale = 1;
+  state.selectedLayerHeight = state.config.pricing.layerHeightMm;
+  elements.scaleInput.value = formatScaleValue(state.manualScale);
+  elements.layerHeightValue.textContent = formatLayerHeight(state.selectedLayerHeight);
+  renderLayerHeightButtons(state.config.printOptions?.layerHeightOptionsMm ?? DEFAULT_LAYER_HEIGHT_OPTIONS);
+  updateScaleHint();
+  applyManualScaleToModel();
+}
+
+function addCurrentQuoteToQueue() {
+  if (!state.lastQuote || !state.lastQuoteBoundsMm) {
+    showWarning("ประเมินราคาก่อน แล้วค่อยเพิ่มลงรายการที่จะผลิต");
     return;
   }
 
   const color = getSelectedColor();
-  const payload = buildQuoteQrPayload({
+  const item = buildPrintRequestItem({
     fileName: state.file?.name ?? "model",
     materialKey: state.selectedMaterial,
-    materialName: quote.material.name,
+    materialName: state.lastQuote.material.name,
     colorId: color?.id ?? "unknown",
     colorName: color?.name ?? "-",
     infillPercent: Number(elements.infillInput.value),
     scale: state.manualScale,
-    boundsMm,
-    quote,
-    generatedAt: new Date().toISOString()
+    layerHeightMm: state.selectedLayerHeight,
+    boundsMm: state.lastQuoteBoundsMm,
+    quote: state.lastQuote
   });
-  const serializedPayload = serializeQuoteQrPayload(payload);
 
-  elements.qrPanel.hidden = false;
-  elements.qrNote.textContent = `${state.file?.name ?? "model"} • THB ${quote.totalPriceThb.toLocaleString()} • x${formatScaleValue(state.manualScale)}`;
-
-  if (!window.QRCode?.toCanvas) {
-    elements.qrNote.textContent = "QR library unavailable in this browser.";
-    return;
-  }
-
-  window.QRCode.toCanvas(
-    elements.qrCanvas,
-    serializedPayload,
-    {
-      width: 220,
-      margin: 1,
-      errorCorrectionLevel: "M",
-      color: {
-        dark: "#081015",
-        light: "#ffffff"
-      }
-    },
-    (error) => {
-      if (error) {
-        console.error(error);
-        elements.qrNote.textContent = "QR generation failed. Please try again.";
-      }
-    }
-  );
+  state.productionQueue = addProductionQueueItem(item);
+  renderProductionQueue();
+  hideWarning();
 }
 
-function clearQrCode() {
-  if (!elements.qrCanvas || !elements.qrPanel) {
+function renderProductionQueue() {
+  elements.queueCount.textContent = `${state.productionQueue.length} รายการ`;
+  elements.queueList.innerHTML = "";
+
+  if (state.productionQueue.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "summary-subtext";
+    empty.textContent = "ยังไม่มีรายการที่บันทึกไว้ในเครื่องนี้";
+    elements.queueList.append(empty);
     return;
   }
 
-  const context = elements.qrCanvas.getContext("2d");
-  context?.clearRect(0, 0, elements.qrCanvas.width, elements.qrCanvas.height);
-  elements.qrPanel.hidden = true;
-  elements.qrNote.textContent = "QR will appear after a valid quote.";
+  for (const item of state.productionQueue) {
+    const article = document.createElement("article");
+    article.className = "queue-item";
+    article.innerHTML = `
+      <div class="queue-item-meta">
+        <h3 class="queue-item-title">${item.fileName}</h3>
+        <p class="queue-item-copy">${item.materialName} / ${item.colorName} / infill ${item.infillPercent}% / x${formatScaleValue(item.scale)} / ${formatLayerHeight(item.layerHeightMm)}</p>
+        <p class="queue-item-copy">${formatSize(item.boundsMm)} / ${item.quote.materialGrams.toFixed(1)} g / ${formatHours(item.quote.printHours)} / THB ${item.quote.totalPriceThb.toLocaleString()}</p>
+      </div>
+      <div class="queue-item-actions">
+        <button class="secondary-button" type="button" data-queue-send="${item.id}">Send to print</button>
+        <button class="secondary-button" type="button" data-queue-remove="${item.id}">ลบ</button>
+      </div>
+    `;
+
+    article.querySelector(`[data-queue-send="${item.id}"]`).addEventListener("click", () => {
+      openTallyModal(item);
+    });
+
+    article.querySelector(`[data-queue-remove="${item.id}"]`).addEventListener("click", () => {
+      state.productionQueue = removeProductionQueueItem(item.id);
+      renderProductionQueue();
+    });
+
+    elements.queueList.append(article);
+  }
+}
+
+function openTallyModal(item) {
+  const tallyFormUrl = state.config.integrations?.tallyFormUrl?.trim();
+  if (!tallyFormUrl) {
+    showWarning("ยังไม่ได้ตั้งค่า Tally form URL ในหน้า -X");
+    return;
+  }
+
+  elements.tallyFrame.src = buildTallySubmissionUrl(tallyFormUrl, item);
+  elements.tallyModal.hidden = false;
+}
+
+function closeTallyModal() {
+  elements.tallyModal.hidden = true;
+  elements.tallyFrame.src = "about:blank";
 }
 
 function makeModelMaterial() {
