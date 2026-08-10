@@ -1,7 +1,7 @@
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js";
-import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.179.1/examples/jsm/controls/OrbitControls.js";
-import { STLLoader } from "https://cdn.jsdelivr.net/npm/three@0.179.1/examples/jsm/loaders/STLLoader.js";
-import { OBJLoader } from "https://cdn.jsdelivr.net/npm/three@0.179.1/examples/jsm/loaders/OBJLoader.js";
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.179.1/+esm";
+import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.179.1/examples/jsm/controls/OrbitControls.js/+esm";
+import { STLLoader } from "https://cdn.jsdelivr.net/npm/three@0.179.1/examples/jsm/loaders/STLLoader.js/+esm";
+import { OBJLoader } from "https://cdn.jsdelivr.net/npm/three@0.179.1/examples/jsm/loaders/OBJLoader.js/+esm";
 
 import { computeTriangleVolume } from "./geometry-math.js";
 import { estimatePrintJob } from "./quote-engine.js";
