@@ -5,6 +5,11 @@ import { OBJLoader } from "https://cdn.jsdelivr.net/npm/three@0.179.1/examples/j
 
 import { computeTriangleVolume } from "./geometry-math.js";
 import { estimatePrintJob } from "./quote-engine.js";
+import {
+  formatFileSize,
+  getModelFileKind,
+  pickFirstModelFile
+} from "./upload-utils.js";
 
 const state = {
   file: null,
@@ -12,10 +17,13 @@ const state = {
   modelMetrics: null,
   selectedMaterial: "pla",
   selectedColor: { name: "White", value: "#f4f7fb" },
-  infillPercent: 20
+  infillPercent: 20,
+  busy: false
 };
 
 const elements = {
+  dropzone: document.querySelector("#dropzone"),
+  dropzoneMeta: document.querySelector("#dropzone-meta"),
   fileInput: document.querySelector("#model-file"),
   fileName: document.querySelector("#file-name"),
   previewStatus: document.querySelector("#preview-status"),
@@ -26,9 +34,6 @@ const elements = {
   metricTime: document.querySelector("#metric-time"),
   summaryPrice: document.querySelector("#summary-price"),
   summaryMessage: document.querySelector("#summary-message"),
-  summaryMaterialCost: document.querySelector("#summary-material-cost"),
-  summaryMachineCost: document.querySelector("#summary-machine-cost"),
-  summaryPrintTime: document.querySelector("#summary-print-time"),
   warningBox: document.querySelector("#warning-box"),
   materialButtons: [...document.querySelectorAll("[data-material]")],
   colorButtons: [...document.querySelectorAll("[data-color-name]")],
@@ -44,32 +49,57 @@ renderIdleState();
 animate();
 
 function bindEvents() {
-  elements.fileInput.addEventListener("change", async (event) => {
-    const [file] = event.target.files ?? [];
-    if (!file) return;
+  elements.fileInput.addEventListener("click", () => {
+    elements.fileInput.value = "";
+  });
 
-    try {
-      elements.previewStatus.textContent = "Parsing model...";
-      await loadFile(file);
-      elements.previewStatus.textContent = "Model loaded";
-      elements.summaryMessage.textContent = "เลือก material แล้วกดคำนวณราคา";
-    } catch (error) {
-      console.error(error);
-      state.modelMetrics = null;
-      state.file = null;
-      clearModel();
-      showWarning("ไฟล์นี้อ่านไม่ได้หรือ geometry มีปัญหา ลอง export ใหม่เป็น STL หรือ OBJ ที่ clean กว่านี้");
-      elements.previewStatus.textContent = "Load failed";
-      elements.summaryMessage.textContent = "ยังคำนวณราคาไม่ได้";
+  elements.fileInput.addEventListener("change", async (event) => {
+    const file = pickFirstModelFile(event.target.files);
+    if (!file) {
+      await handleUnsupportedSelection();
+      return;
     }
+
+    await handleSelectedFile(file);
+  });
+
+  elements.dropzone.addEventListener("dragenter", (event) => {
+    event.preventDefault();
+    elements.dropzone.classList.add("is-dragging");
+  });
+
+  elements.dropzone.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    elements.dropzone.classList.add("is-dragging");
+  });
+
+  elements.dropzone.addEventListener("dragleave", (event) => {
+    if (event.currentTarget.contains(event.relatedTarget)) {
+      return;
+    }
+
+    elements.dropzone.classList.remove("is-dragging");
+  });
+
+  elements.dropzone.addEventListener("drop", async (event) => {
+    event.preventDefault();
+    elements.dropzone.classList.remove("is-dragging");
+
+    const file = pickFirstModelFile(event.dataTransfer?.files);
+    if (!file) {
+      await handleUnsupportedSelection();
+      return;
+    }
+
+    await handleSelectedFile(file);
   });
 
   elements.materialButtons.forEach((button) => {
     button.addEventListener("click", () => {
       state.selectedMaterial = button.dataset.material;
       toggleActive(elements.materialButtons, button);
-      updatePreviewLabel();
-      tintModel();
+      updateMaterialPreview();
+      recalculateIfReady();
     });
   });
 
@@ -80,19 +110,21 @@ function bindEvents() {
         value: button.dataset.color
       };
       toggleActive(elements.colorButtons, button);
-      updatePreviewLabel();
+      updateMaterialPreview();
       tintModel();
+      recalculateIfReady();
     });
   });
 
   elements.infillInput.addEventListener("input", () => {
     state.infillPercent = Number(elements.infillInput.value);
     elements.infillValue.textContent = `${state.infillPercent}%`;
+    recalculateIfReady();
   });
 
   elements.calculateButton.addEventListener("click", () => {
     if (!state.modelMetrics) {
-      showWarning("อัปโหลดไฟล์ก่อนคำนวณราคา");
+      showWarning("เลือกไฟล์ก่อน แล้วระบบจะคำนวณให้");
       return;
     }
 
@@ -102,24 +134,56 @@ function bindEvents() {
   window.addEventListener("resize", () => viewer.resize());
 }
 
-async function loadFile(file) {
+async function handleUnsupportedSelection() {
+  showWarning("รองรับเฉพาะไฟล์ STL หรือ OBJ");
+  elements.previewStatus.textContent = "ไฟล์ไม่รองรับ";
+  elements.summaryMessage.textContent = "ลองเลือกไฟล์ STL หรือ OBJ";
+}
+
+async function handleSelectedFile(file) {
+  const kind = getModelFileKind(file);
+  if (!kind) {
+    await handleUnsupportedSelection();
+    return;
+  }
+
+  try {
+    setBusyState(true, "กำลังอ่านไฟล์...");
+    hideWarning();
+    await loadFile(file, kind);
+    renderQuote();
+    setBusyState(false, "พร้อมประเมิน");
+  } catch (error) {
+    console.error(error);
+    state.modelMetrics = null;
+    state.file = null;
+    elements.fileName.textContent = "ยังไม่ได้เลือกไฟล์";
+    elements.dropzoneMeta.textContent = "คลิกหรือวางไฟล์ที่นี่";
+    clearModel();
+    setViewerPlaceholderVisible(true);
+    setBusyState(false, "โหลดไม่สำเร็จ");
+    showWarning("ไฟล์นี้อ่านไม่ผ่าน ลอง export ใหม่เป็น STL หรือ OBJ แล้วอัปโหลดอีกครั้ง");
+    renderIdleMetrics();
+  } finally {
+    elements.fileInput.value = "";
+  }
+}
+
+async function loadFile(file, kind) {
   state.file = file;
   elements.fileName.textContent = file.name;
-  hideWarning();
+  elements.dropzoneMeta.textContent = `${kind.toUpperCase()} • ${formatFileSize(file.size)}`;
 
-  const extension = file.name.split(".").pop()?.toLowerCase();
   let model;
 
-  if (extension === "stl") {
+  if (kind === "stl") {
     const arrayBuffer = await file.arrayBuffer();
     const geometry = new STLLoader().parse(arrayBuffer);
     geometry.computeVertexNormals();
     model = new THREE.Mesh(geometry, makeModelMaterial());
-  } else if (extension === "obj") {
+  } else {
     const text = await file.text();
     model = new OBJLoader().parse(text);
-  } else {
-    throw new Error("Unsupported file type");
   }
 
   model.rotation.x = -Math.PI / 2;
@@ -129,9 +193,9 @@ async function loadFile(file) {
   clearModel();
   state.modelRoot = model;
   viewer.scene.add(model);
+  setViewerPlaceholderVisible(false);
   fitModelToView(model);
   tintModel();
-  renderMetricsPlaceholder();
 }
 
 function computeModelMetrics(root) {
@@ -170,7 +234,15 @@ function computeModelMetrics(root) {
   };
 }
 
-function renderMetricsPlaceholder() {
+function recalculateIfReady() {
+  if (!state.modelMetrics || state.busy) {
+    return;
+  }
+
+  renderQuote();
+}
+
+function renderQuote() {
   const quote = estimatePrintJob({
     solidVolumeMm3: state.modelMetrics.solidVolumeMm3,
     boundsMm: state.modelMetrics.boundsMm,
@@ -182,48 +254,44 @@ function renderMetricsPlaceholder() {
   elements.metricVolume.textContent = `${quote.solidVolumeCm3.toFixed(2)} cm3`;
   elements.metricWeight.textContent = `${quote.materialGrams.toFixed(1)} g`;
   elements.metricTime.textContent = formatHours(quote.printHours);
-}
-
-function renderQuote() {
-  const quote = estimatePrintJob({
-    solidVolumeMm3: state.modelMetrics.solidVolumeMm3,
-    boundsMm: state.modelMetrics.boundsMm,
-    materialKey: state.selectedMaterial,
-    infillPercent: state.infillPercent
-  });
-
-  elements.metricWeight.textContent = `${quote.materialGrams.toFixed(1)} g`;
-  elements.metricTime.textContent = formatHours(quote.printHours);
-  elements.metricVolume.textContent = `${quote.solidVolumeCm3.toFixed(2)} cm3`;
   elements.summaryPrice.textContent = `THB ${quote.totalPriceThb.toLocaleString()}`;
-  elements.summaryMessage.textContent = `${quote.material.name} • infill ${state.infillPercent}% • color ${state.selectedColor.name}`;
-  elements.summaryMaterialCost.textContent = `THB ${quote.materialCostThb.toFixed(0)}`;
-  elements.summaryMachineCost.textContent = `THB ${quote.machineCostThb.toFixed(0)}`;
-  elements.summaryPrintTime.textContent = formatHours(quote.printHours);
+  elements.summaryMessage.textContent = `${quote.material.name} • ${state.selectedColor.name} • infill ${state.infillPercent}%`;
 
   if (state.modelMetrics.usedFallback) {
-    showWarning("Mesh นี้ปิด volume ไม่สมบูรณ์ ระบบเลยใช้ bounding-box fallback แบบกันขาดทุน ผลลัพธ์อาจสูงกว่าปกติ");
+    showWarning("ไฟล์นี้คำนวณ volume ตรงๆ ไม่ได้ ระบบเลยใช้การประเมินแบบเผื่อขาดทุน");
   } else {
     hideWarning();
   }
 }
 
 function renderIdleState() {
+  updateMaterialPreview();
+  setViewerPlaceholderVisible(true);
+  renderIdleMetrics();
+}
+
+function renderIdleMetrics() {
+  elements.fileName.textContent = "ยังไม่ได้เลือกไฟล์";
+  elements.previewStatus.textContent = "พร้อมอัปโหลด";
+  elements.dropzoneMeta.textContent = "คลิกหรือวางไฟล์ที่นี่";
   elements.metricSize.textContent = "-";
   elements.metricVolume.textContent = "-";
   elements.metricWeight.textContent = "-";
   elements.metricTime.textContent = "-";
   elements.summaryPrice.textContent = "THB -";
-  elements.summaryMessage.textContent = "อัปโหลดไฟล์ก่อน แล้วกดคำนวณราคา";
-  elements.summaryMaterialCost.textContent = "-";
-  elements.summaryMachineCost.textContent = "-";
-  elements.summaryPrintTime.textContent = "-";
-  updatePreviewLabel();
+  elements.summaryMessage.textContent = "อัปโหลดไฟล์ก่อน แล้วระบบจะประเมินให้อัตโนมัติ";
 }
 
-function updatePreviewLabel() {
+function updateMaterialPreview() {
   const materialLabel = state.selectedMaterial.toUpperCase();
   elements.materialPreview.textContent = `${materialLabel} / ${state.selectedColor.name}`;
+}
+
+function setBusyState(isBusy, statusText) {
+  state.busy = isBusy;
+  elements.previewStatus.textContent = statusText;
+  elements.calculateButton.disabled = isBusy;
+  elements.calculateButton.textContent = isBusy ? "กำลังประมวลผล..." : "ประเมินราคา";
 }
 
 function toggleActive(buttons, activeButton) {
@@ -270,8 +338,25 @@ function tintModel() {
 
 function clearModel() {
   if (!state.modelRoot) return;
+
   viewer.scene.remove(state.modelRoot);
+  disposeObject3D(state.modelRoot);
   state.modelRoot = null;
+}
+
+function disposeObject3D(root) {
+  root.traverse((child) => {
+    if (child.geometry) {
+      child.geometry.dispose();
+    }
+
+    if (Array.isArray(child.material)) {
+      child.material.forEach((material) => material.dispose?.());
+      return;
+    }
+
+    child.material?.dispose?.();
+  });
 }
 
 function fitModelToView(root) {
@@ -282,11 +367,19 @@ function fitModelToView(root) {
   const distance = maxDim * 1.8 || 120;
 
   viewer.controls.target.copy(center);
-  viewer.camera.position.set(center.x + distance, center.y + distance * 0.5, center.z + distance);
+  viewer.camera.position.set(
+    center.x + distance,
+    center.y + distance * 0.5,
+    center.z + distance
+  );
   viewer.camera.near = Math.max(0.1, maxDim / 100);
   viewer.camera.far = Math.max(1000, maxDim * 20);
   viewer.camera.updateProjectionMatrix();
   viewer.controls.update();
+}
+
+function setViewerPlaceholderVisible(visible) {
+  viewer.placeholder.visible = visible;
 }
 
 function createViewer(canvas) {
@@ -313,11 +406,11 @@ function createViewer(canvas) {
   scene.add(key);
 
   const floor = new THREE.Mesh(
-    new THREE.CircleGeometry(160, 60),
+    new THREE.CircleGeometry(180, 60),
     new THREE.MeshBasicMaterial({
       color: 0x0f1c22,
       transparent: true,
-      opacity: 0.55
+      opacity: 0.52
     })
   );
   floor.rotation.x = -Math.PI / 2;
@@ -327,7 +420,7 @@ function createViewer(canvas) {
   const placeholder = new THREE.Mesh(
     new THREE.TorusKnotGeometry(24, 7, 180, 18),
     new THREE.MeshStandardMaterial({
-      color: 0x4af2ff,
+      color: 0x54e8ff,
       emissive: 0x0c5464,
       roughness: 0.35,
       metalness: 0.12,
@@ -346,13 +439,24 @@ function createViewer(canvas) {
 
   resize();
 
-  return { renderer, scene, camera, controls, placeholder, resize };
+  return {
+    renderer,
+    scene,
+    camera,
+    controls,
+    placeholder,
+    resize
+  };
 }
 
 function animate() {
   requestAnimationFrame(animate);
-  viewer.placeholder.rotation.x += 0.004;
-  viewer.placeholder.rotation.y += 0.006;
+
+  if (viewer.placeholder.visible) {
+    viewer.placeholder.rotation.x += 0.004;
+    viewer.placeholder.rotation.y += 0.006;
+  }
+
   viewer.controls.update();
   viewer.renderer.render(viewer.scene, viewer.camera);
 }
