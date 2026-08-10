@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="th">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Print It Now Quote</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@500;700&family=Inter:wght@400;500;700;800&family=JetBrains+Mono:wght@500&display=swap"
+      rel="stylesheet"
+    >
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Instant 3D Print Quote</p>
+          <h1>อัปโหลดไฟล์ แล้วดูราคาพิมพ์ทันที</h1>
+          <p class="subcopy">
+            รองรับ <strong>STL</strong> และ <strong>OBJ</strong> แบบประเมินคร่าวๆ บนหน้าเว็บ
+            โดยยึดหลักคิดราคาเผื่อความเสี่ยงเพื่อช่วยกันงานขาดทุน
+          </p>
+        </div>
+        <div class="status-pill">Static frontend for GitHub Pages</div>
+      </header>
+
+      <main class="layout">
+        <section class="panel viewer-panel">
+          <div class="viewer-head">
+            <div>
+              <div class="viewer-meta">Model preview</div>
+              <strong id="file-name">ยังไม่ได้เลือกไฟล์</strong>
+            </div>
+            <div class="viewer-meta">Assume file unit = mm</div>
+          </div>
+          <div class="viewer-stage">
+            <canvas id="viewer-canvas"></canvas>
+            <div class="viewer-overlay">
+              <div class="chip" id="preview-status">Ready for STL / OBJ</div>
+              <div class="chip" id="material-preview">PLA / White</div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="sidebar">
+          <section class="panel section">
+            <h2 class="section-title">1. Upload model</h2>
+            <p class="section-note">
+              ถ้าไฟล์เปิดไม่ได้หรือ mesh ไม่สมบูรณ์ ระบบจะ fallback ไปใช้การประเมินแบบ conservative
+            </p>
+            <label class="upload-label" for="model-file">
+              <span class="upload-title">เลือกไฟล์ STL หรือ OBJ</span>
+              <span class="upload-subtitle">คลิกเพื่อเลือกไฟล์จากเครื่องของคุณ</span>
+            </label>
+            <input id="model-file" type="file" accept=".stl,.obj,model/stl,text/plain">
+          </section>
+
+          <section class="panel section">
+            <h2 class="section-title">2. Model metrics</h2>
+            <div class="grid-two">
+              <article class="metric-card">
+                <p class="metric-label">Size (X × Y × Z)</p>
+                <p class="metric-value" id="metric-size">-</p>
+              </article>
+              <article class="metric-card">
+                <p class="metric-label">Solid volume</p>
+                <p class="metric-value" id="metric-volume">-</p>
+              </article>
+              <article class="metric-card">
+                <p class="metric-label">Est. material</p>
+                <p class="metric-value" id="metric-weight">-</p>
+              </article>
+              <article class="metric-card">
+                <p class="metric-label">Est. print time</p>
+                <p class="metric-value" id="metric-time">-</p>
+              </article>
+            </div>
+          </section>
+
+          <section class="panel section">
+            <h2 class="section-title">3. Print setup</h2>
+            <div class="control-stack">
+              <div>
+                <p class="metric-label">Material</p>
+                <div class="material-row" id="material-options">
+                  <button class="pill-button is-active" type="button" data-material="pla">PLA</button>
+                  <button class="pill-button" type="button" data-material="petg">PETG</button>
+                </div>
+              </div>
+
+              <div class="slider-wrap">
+                <div class="slider-head">
+                  <span class="metric-label">Infill</span>
+                  <strong id="infill-value">20%</strong>
+                </div>
+                <input id="infill-input" type="range" min="10" max="40" step="5" value="20">
+                <div class="range-scale">
+                  <span>10%</span>
+                  <span>25%</span>
+                  <span>40%</span>
+                </div>
+              </div>
+
+              <div>
+                <p class="metric-label">Color preview</p>
+                <div class="color-row" id="color-options">
+                  <button class="color-button is-active" type="button" data-color-name="White" data-color="#f4f7fb" style="background:#f4f7fb"></button>
+                  <button class="color-button" type="button" data-color-name="Black" data-color="#11151a" style="background:#11151a"></button>
+                  <button class="color-button" type="button" data-color-name="Red" data-color="#cf3a43" style="background:#cf3a43"></button>
+                  <button class="color-button" type="button" data-color-name="Blue" data-color="#3d74e7" style="background:#3d74e7"></button>
+                </div>
+              </div>
+
+              <button class="action-button" id="calculate-button" type="button">
+                คำนวณราคา
+              </button>
+            </div>
+          </section>
+
+          <section class="panel section">
+            <h2 class="section-title">4. Quote summary</h2>
+            <div class="summary-card">
+              <p class="metric-label">Estimated price</p>
+              <p class="summary-price" id="summary-price">THB -</p>
+              <p class="summary-subtext" id="summary-message">อัปโหลดไฟล์ก่อน แล้วกดคำนวณราคา</p>
+              <div class="summary-list">
+                <div class="summary-row">
+                  <span>Material cost</span>
+                  <span id="summary-material-cost">-</span>
+                </div>
+                <div class="summary-row">
+                  <span>Machine time cost</span>
+                  <span id="summary-machine-cost">-</span>
+                </div>
+                <div class="summary-row">
+                  <span>Estimated print time</span>
+                  <span id="summary-print-time">-</span>
+                </div>
+              </div>
+              <div class="warning-box" id="warning-box" hidden></div>
+              <p class="muted-footer">
+                หมายเหตุ: ราคานี้เป็น estimate เพื่อคัดกรองลูกค้าเร็วขึ้น ไม่ใช่ slicer quote แบบละเอียด
+              </p>
+            </div>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
