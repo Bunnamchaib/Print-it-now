@@ -3,6 +3,7 @@ import {
   getRuntimeConfig,
   saveRuntimeConfig
 } from "./config-store.js";
+import { normalizeLayerHeightOptions } from "./layer-height-options.js";
 import { DEFAULT_SITE_CONFIG } from "./site-config.js";
 
 const AUTH_KEY = "print-it-now-admin-auth";
@@ -17,6 +18,7 @@ const elements = {
   brandSubcopy: document.querySelector("#brand-subcopy"),
   brandTitle: document.querySelector("h1"),
   colorGrid: document.querySelector("#color-admin-grid"),
+  layerHeightOptions: document.querySelector("#layer-height-options"),
   tallyFormUrl: document.querySelector("#tally-form-url"),
   fieldMap: {
     setupFeeThb: document.querySelector("#setup-fee"),
@@ -99,11 +101,14 @@ function render() {
 }
 
 function renderSettings() {
-  const { brand, pricing, materials, colors, integrations } = state.config;
+  const { brand, pricing, materials, colors, integrations, printOptions } = state.config;
 
   elements.brandHeadline.value = brand.headline;
   elements.brandSubcopy.value = brand.subcopy;
   elements.tallyFormUrl.value = integrations?.tallyFormUrl ?? "";
+  elements.layerHeightOptions.value = (printOptions?.layerHeightOptionsMm ?? [])
+    .map((value) => value.toFixed(2))
+    .join(", ");
 
   for (const [key, element] of Object.entries(elements.fieldMap)) {
     element.value = pricing[key];
@@ -192,6 +197,11 @@ function collectConfigFromForm() {
   for (const [key, element] of Object.entries(elements.fieldMap)) {
     nextConfig.pricing[key] = Number(element.value);
   }
+
+  nextConfig.printOptions.layerHeightOptionsMm = normalizeLayerHeightOptions(
+    elements.layerHeightOptions.value,
+    nextConfig.pricing.layerHeightMm
+  );
 
   for (const material of Object.values(nextConfig.materials)) {
     material.enabled = document.querySelector(`[data-material-enabled="${material.key}"]`).checked;

@@ -33,6 +33,7 @@ import {
   formatLayerHeight,
   getLayerHeightLabel
 } from "./layer-height.js";
+import { DEFAULT_LAYER_HEIGHT_OPTIONS } from "./layer-height-options.js";
 import {
   formatFileSize,
   getModelFileKind,
@@ -47,8 +48,6 @@ const VIEW_PRESETS = {
   left: new THREE.Vector3(-1, 0, 0),
   right: new THREE.Vector3(1, 0, 0)
 };
-
-const DEFAULT_LAYER_HEIGHT_OPTIONS = [0.16, 0.2, 0.24];
 
 const state = {
   busy: false,
