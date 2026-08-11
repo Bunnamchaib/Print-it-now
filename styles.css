@@ -493,12 +493,33 @@ input[type="range"] {
   box-shadow: var(--shadow);
 }
 
-.tally-frame {
-  width: 100%;
-  height: 100%;
+.request-modal-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: 16px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.request-summary,
+.request-form {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  min-height: 0;
+  padding: 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: #ffffff;
+  background: rgba(10, 15, 18, 0.78);
+}
+
+.request-summary-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.request-form-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .modal-close {
@@ -548,6 +569,15 @@ input[type="range"] {
   #viewer-canvas {
     min-height: 360px;
     height: 360px;
+  }
+
+  .request-modal-layout,
+  .request-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-card {
+    height: min(92vh, 900px);
   }
 }
 
@@ -608,6 +638,11 @@ input[type="range"] {
   background: rgba(8, 12, 15, 0.9);
   color: var(--text);
   font: inherit;
+}
+
+.text-area-input {
+  min-height: 140px;
+  resize: vertical;
 }
 
 .checkbox-row {

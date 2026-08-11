@@ -9,6 +9,7 @@ export const DEFAULT_SITE_CONFIG = {
     password: "7321"
   },
   integrations: {
+    formspreeEndpoint: "https://formspree.io/f/mwleokgd",
     tallyFormUrl: ""
   },
   pricing: {

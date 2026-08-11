@@ -58,26 +58,27 @@ export function buildPrintRequestItem({
   };
 }
 
-export function buildTallySubmissionUrl(baseUrl, item) {
-  const url = new URL(baseUrl);
-  url.searchParams.set("hideTitle", "1");
-  url.searchParams.set("transparentBackground", "1");
-  url.searchParams.set("dynamicHeight", "1");
-  url.searchParams.set("quote_id", item.id);
-  url.searchParams.set("quote_file", item.fileName);
-  url.searchParams.set("quote_material", item.materialName);
-  url.searchParams.set("quote_color", item.colorName);
-  url.searchParams.set("quote_infill", String(item.infillPercent));
-  url.searchParams.set("quote_scale", String(item.scale));
-  url.searchParams.set("quote_layer_height", String(item.layerHeightMm));
-  url.searchParams.set("quote_size_x_mm", String(item.boundsMm.x));
-  url.searchParams.set("quote_size_y_mm", String(item.boundsMm.y));
-  url.searchParams.set("quote_size_z_mm", String(item.boundsMm.z));
-  url.searchParams.set("quote_volume_cm3", String(item.quote.solidVolumeCm3));
-  url.searchParams.set("quote_weight_g", String(item.quote.materialGrams));
-  url.searchParams.set("quote_time_h", String(item.quote.printHours));
-  url.searchParams.set("quote_price_thb", String(item.quote.totalPriceThb));
-  url.searchParams.set("quote_created_at", item.createdAt);
-  url.searchParams.set("quote_json", encodeQuoteSnapshot(item));
-  return url.toString();
+export function buildFormspreeSubmissionPayload(item, customer = {}) {
+  return {
+    email: customer.email?.trim?.() ?? "",
+    phone: customer.phone?.trim?.() ?? "",
+    line: customer.line?.trim?.() ?? "",
+    message: customer.message?.trim?.() ?? "",
+    quote_id: item.id,
+    quote_file: item.fileName,
+    quote_material: item.materialName,
+    quote_color: item.colorName,
+    quote_infill: String(item.infillPercent),
+    quote_scale: String(item.scale),
+    quote_layer_height: String(item.layerHeightMm),
+    quote_size_x_mm: String(item.boundsMm.x),
+    quote_size_y_mm: String(item.boundsMm.y),
+    quote_size_z_mm: String(item.boundsMm.z),
+    quote_volume_cm3: String(item.quote.solidVolumeCm3),
+    quote_weight_g: String(item.quote.materialGrams),
+    quote_time_h: String(item.quote.printHours),
+    quote_price_thb: String(item.quote.totalPriceThb),
+    quote_created_at: item.createdAt,
+    quote_json: encodeQuoteSnapshot(item)
+  };
 }

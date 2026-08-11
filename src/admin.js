@@ -18,8 +18,8 @@ const elements = {
   brandSubcopy: document.querySelector("#brand-subcopy"),
   brandTitle: document.querySelector("h1"),
   colorGrid: document.querySelector("#color-admin-grid"),
+  formspreeEndpoint: document.querySelector("#formspree-endpoint"),
   layerHeightOptions: document.querySelector("#layer-height-options"),
-  tallyFormUrl: document.querySelector("#tally-form-url"),
   fieldMap: {
     setupFeeThb: document.querySelector("#setup-fee"),
     minimumChargeThb: document.querySelector("#minimum-charge"),
@@ -105,7 +105,7 @@ function renderSettings() {
 
   elements.brandHeadline.value = brand.headline;
   elements.brandSubcopy.value = brand.subcopy;
-  elements.tallyFormUrl.value = integrations?.tallyFormUrl ?? "";
+  elements.formspreeEndpoint.value = integrations?.formspreeEndpoint ?? integrations?.tallyFormUrl ?? "";
   elements.layerHeightOptions.value = (printOptions?.layerHeightOptionsMm ?? [])
     .map((value) => value.toFixed(2))
     .join(", ");
@@ -192,7 +192,7 @@ function collectConfigFromForm() {
 
   nextConfig.brand.headline = elements.brandHeadline.value.trim() || DEFAULT_SITE_CONFIG.brand.headline;
   nextConfig.brand.subcopy = elements.brandSubcopy.value.trim() || DEFAULT_SITE_CONFIG.brand.subcopy;
-  nextConfig.integrations.tallyFormUrl = elements.tallyFormUrl.value.trim();
+  nextConfig.integrations.formspreeEndpoint = elements.formspreeEndpoint.value.trim();
 
   for (const [key, element] of Object.entries(elements.fieldMap)) {
     nextConfig.pricing[key] = Number(element.value);

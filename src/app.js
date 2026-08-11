@@ -20,7 +20,7 @@ import {
 } from "./production-queue.js";
 import {
   buildPrintRequestItem,
-  buildTallySubmissionUrl
+  buildFormspreeSubmissionPayload
 } from "./quote-request.js";
 import { estimatePrintJob } from "./quote-engine.js";
 import {
@@ -50,6 +50,7 @@ const VIEW_PRESETS = {
 };
 
 const state = {
+  activeRequestItem: null,
   busy: false,
   config: getRuntimeConfig(),
   file: null,
@@ -59,6 +60,7 @@ const state = {
   modelMetrics: null,
   modelRoot: null,
   productionQueue: readProductionQueue(),
+  requestSubmitting: false,
   selectedColorId: null,
   selectedLayerHeight: getRuntimeConfig().pricing.layerHeightMm,
   selectedMaterial: null
@@ -89,14 +91,21 @@ const elements = {
   queueAddButton: document.querySelector("#queue-add-button"),
   queueCount: document.querySelector("#queue-count"),
   queueList: document.querySelector("#queue-list"),
+  requestCloseButton: document.querySelector("#request-close-button"),
+  requestFileName: document.querySelector("#request-file-name"),
+  requestForm: document.querySelector("#print-request-form"),
+  requestFormStatus: document.querySelector("#request-form-status"),
+  requestMaterial: document.querySelector("#request-material"),
+  requestModal: document.querySelector("#request-modal"),
+  requestPrice: document.querySelector("#request-price"),
+  requestSize: document.querySelector("#request-size"),
+  requestSubmitButton: document.querySelector("#request-submit-button"),
+  requestWeight: document.querySelector("#request-weight"),
   scaleHint: document.querySelector("#scale-hint"),
   scaleInput: document.querySelector("#scale-input"),
   clearAdvancedButton: document.querySelector("#clear-advanced-button"),
   summaryMessage: document.querySelector("#summary-message"),
   summaryPrice: document.querySelector("#summary-price"),
-  tallyCloseButton: document.querySelector("#tally-close-button"),
-  tallyFrame: document.querySelector("#tally-frame"),
-  tallyModal: document.querySelector("#tally-modal"),
   viewButtons: [...document.querySelectorAll("[data-view]")],
   warningBox: document.querySelector("#warning-box")
 };
@@ -188,11 +197,12 @@ function bindEvents() {
     addCurrentQuoteToQueue();
   });
 
-  elements.tallyCloseButton.addEventListener("click", closeTallyModal);
-  elements.tallyModal.addEventListener("click", (event) => {
+  elements.requestCloseButton.addEventListener("click", closeRequestModal);
+  elements.requestForm.addEventListener("submit", handleRequestSubmit);
+  elements.requestModal.addEventListener("click", (event) => {
     const target = event.target;
     if (target instanceof HTMLElement && target.dataset.closeModal === "true") {
-      closeTallyModal();
+      closeRequestModal();
     }
   });
 
@@ -532,6 +542,16 @@ function getSelectedColorHex() {
   return getSelectedColor()?.hex ?? "#f4f7fb";
 }
 
+function getFormspreeEndpoint() {
+  return state.config.integrations?.formspreeEndpoint?.trim()
+    || state.config.integrations?.tallyFormUrl?.trim()
+    || "";
+}
+
+function setRequestFormStatus(message) {
+  elements.requestFormStatus.textContent = message;
+}
+
 function setBusyState(isBusy, statusText) {
   state.busy = isBusy;
   elements.previewStatus.textContent = statusText;
@@ -621,7 +641,7 @@ function renderProductionQueue() {
     `;
 
     article.querySelector(`[data-queue-send="${item.id}"]`).addEventListener("click", () => {
-      openTallyModal(item);
+      openRequestModal(item);
     });
 
     article.querySelector(`[data-queue-remove="${item.id}"]`).addEventListener("click", () => {
@@ -647,6 +667,110 @@ function openTallyModal(item) {
 function closeTallyModal() {
   elements.tallyModal.hidden = true;
   elements.tallyFrame.src = "about:blank";
+}
+
+function openRequestModal(item) {
+  if (!getFormspreeEndpoint()) {
+    showWarning("ยังไม่ได้ตั้งค่า Formspree endpoint ในหน้า -X");
+    return;
+  }
+
+  state.activeRequestItem = item;
+  state.requestSubmitting = false;
+  elements.requestFileName.textContent = item.fileName;
+  elements.requestMaterial.textContent = `${item.materialName} / ${item.colorName} / infill ${item.infillPercent}% / ${formatLayerHeight(item.layerHeightMm)}`;
+  elements.requestSize.textContent = formatSize(item.boundsMm);
+  elements.requestWeight.textContent = `${item.quote.materialGrams.toFixed(1)} g / ${formatHours(item.quote.printHours)}`;
+  elements.requestPrice.textContent = `THB ${item.quote.totalPriceThb.toLocaleString()}`;
+  elements.requestForm.action = getFormspreeEndpoint();
+  elements.requestForm.reset();
+  setRequestFormStatus("กรอกช่องทางติดต่ออย่างน้อย 1 ช่อง แล้วกดส่ง");
+  elements.requestSubmitButton.disabled = false;
+  elements.requestModal.hidden = false;
+}
+
+function closeRequestModal() {
+  state.activeRequestItem = null;
+  state.requestSubmitting = false;
+  elements.requestModal.hidden = true;
+  elements.requestForm.reset();
+  setRequestFormStatus("กรอกช่องทางติดต่ออย่างน้อย 1 ช่อง แล้วกดส่ง");
+  elements.requestSubmitButton.disabled = false;
+}
+
+async function handleRequestSubmit(event) {
+  event.preventDefault();
+
+  if (state.requestSubmitting || !state.activeRequestItem) {
+    return;
+  }
+
+  const endpoint = getFormspreeEndpoint();
+  if (!endpoint) {
+    setRequestFormStatus("ยังไม่ได้ตั้งค่า Formspree endpoint ในหน้า -X");
+    return;
+  }
+
+  const formData = new FormData(elements.requestForm);
+  const customer = {
+    email: String(formData.get("email") ?? ""),
+    phone: String(formData.get("phone") ?? ""),
+    line: String(formData.get("line") ?? ""),
+    message: String(formData.get("message") ?? "")
+  };
+
+  if (!customer.email.trim() && !customer.phone.trim() && !customer.line.trim()) {
+    setRequestFormStatus("กรอก เบอร์, LINE หรือ Email อย่างน้อย 1 ช่อง");
+    return;
+  }
+
+  const payload = buildFormspreeSubmissionPayload(state.activeRequestItem, customer);
+  const requestBody = new FormData();
+
+  for (const [key, value] of Object.entries(payload)) {
+    requestBody.append(key, value);
+  }
+
+  requestBody.append("_subject", `Print It Now - ${state.activeRequestItem.fileName}`);
+  if (customer.email.trim()) {
+    requestBody.append("_replyto", customer.email.trim());
+  }
+
+  state.requestSubmitting = true;
+  elements.requestSubmitButton.disabled = true;
+  setRequestFormStatus("กำลังส่งข้อมูล...");
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Accept: "application/json"
+      },
+      body: requestBody
+    });
+
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => null);
+      const message = errorPayload?.errors?.[0]?.message ?? "ส่งข้อมูลไม่สำเร็จ ลองใหม่อีกครั้ง";
+      setRequestFormStatus(message);
+      return;
+    }
+
+    setRequestFormStatus("ส่งข้อมูลแล้ว เดี๋ยวเราติดต่อกลับตามช่องทางที่ให้ไว้");
+    elements.requestForm.reset();
+    state.productionQueue = removeProductionQueueItem(state.activeRequestItem.id);
+    renderProductionQueue();
+    setTimeout(() => {
+      if (!elements.requestModal.hidden) {
+        closeRequestModal();
+      }
+    }, 1200);
+  } catch {
+    setRequestFormStatus("ส่งข้อมูลไม่สำเร็จ ลองใหม่อีกครั้ง");
+  } finally {
+    state.requestSubmitting = false;
+    elements.requestSubmitButton.disabled = false;
+  }
 }
 
 function makeModelMaterial() {

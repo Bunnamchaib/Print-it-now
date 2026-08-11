@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildPrintRequestItem,
-  buildTallySubmissionUrl
+  buildFormspreeSubmissionPayload
 } from "../src/quote-request.js";
 
 test("buildPrintRequestItem captures selected settings for queue storage", () => {
@@ -33,9 +33,8 @@ test("buildPrintRequestItem captures selected settings for queue storage", () =>
   assert.ok(typeof item.id === "string");
 });
 
-test("buildTallySubmissionUrl appends hidden quote fields for an embedded Tally form", () => {
-  const url = buildTallySubmissionUrl(
-    "https://tally.so/r/example?hideTitle=1",
+test("buildFormspreeSubmissionPayload merges customer fields with quote metadata", () => {
+  const payload = buildFormspreeSubmissionPayload(
     {
       id: "req-1",
       fileName: "hanger.stl",
@@ -52,12 +51,21 @@ test("buildTallySubmissionUrl appends hidden quote fields for an embedded Tally 
         totalPriceThb: 260
       },
       createdAt: "2026-08-10T12:00:00.000Z"
+    },
+    {
+      email: "customer@example.com",
+      phone: "0812345678",
+      line: "@bunnamchai",
+      message: "อยากรับภายในสัปดาห์นี้"
     }
   );
 
-  assert.match(url, /hideTitle=1/);
-  assert.match(url, /quote_id=req-1/);
-  assert.match(url, /quote_material=PLA/);
-  assert.match(url, /quote_price_thb=260/);
-  assert.match(url, /quote_json=/);
+  assert.equal(payload.email, "customer@example.com");
+  assert.equal(payload.phone, "0812345678");
+  assert.equal(payload.line, "@bunnamchai");
+  assert.equal(payload.message, "อยากรับภายในสัปดาห์นี้");
+  assert.equal(payload.quote_id, "req-1");
+  assert.equal(payload.quote_material, "PLA");
+  assert.equal(payload.quote_price_thb, "260");
+  assert.match(payload.quote_json, /"fileName":"hanger\.stl"/);
 });

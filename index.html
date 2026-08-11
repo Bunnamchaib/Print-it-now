@@ -144,14 +144,62 @@
       </main>
     </div>
 
-    <div class="modal-shell" id="tally-modal" hidden>
+    <div class="modal-shell" id="request-modal" hidden>
       <div class="modal-backdrop" data-close-modal="true"></div>
       <section class="modal-card">
         <div class="group-head">
           <span class="group-label">Send to print</span>
-          <button class="secondary-button modal-close" id="tally-close-button" type="button">ปิด</button>
+          <button class="secondary-button modal-close" id="request-close-button" type="button">ปิด</button>
         </div>
-        <iframe class="tally-frame" id="tally-frame" title="Tally form"></iframe>
+        <div class="request-modal-layout">
+          <section class="request-summary">
+            <p class="viewer-label">Quote summary</p>
+            <strong id="request-file-name">-</strong>
+            <div class="metric-grid request-summary-grid">
+              <article class="metric-tile">
+                <p class="metric-label">วัสดุ</p>
+                <p class="metric-value" id="request-material">-</p>
+              </article>
+              <article class="metric-tile">
+                <p class="metric-label">ขนาด</p>
+                <p class="metric-value" id="request-size">-</p>
+              </article>
+              <article class="metric-tile">
+                <p class="metric-label">น้ำหนัก</p>
+                <p class="metric-value" id="request-weight">-</p>
+              </article>
+              <article class="metric-tile">
+                <p class="metric-label">ราคา</p>
+                <p class="metric-value" id="request-price">-</p>
+              </article>
+            </div>
+          </section>
+
+          <form class="request-form" id="print-request-form" action="https://formspree.io/f/mwleokgd" method="POST" novalidate>
+            <div class="field-grid">
+              <div class="form-row">
+                <label for="request-phone">เบอร์</label>
+                <input class="text-input" id="request-phone" name="phone" type="text" autocomplete="tel">
+              </div>
+              <div class="form-row">
+                <label for="request-line">LINE</label>
+                <input class="text-input" id="request-line" name="line" type="text" autocomplete="off">
+              </div>
+              <div class="form-row form-row-full">
+                <label for="request-email">Email</label>
+                <input class="text-input" id="request-email" name="email" type="email" autocomplete="email">
+              </div>
+              <div class="form-row form-row-full">
+                <label for="request-message">รายละเอียดเพิ่มเติม</label>
+                <textarea class="text-input text-area-input" id="request-message" name="message" rows="5" placeholder="เช่น รีบใช้, ต้องการสีเฉพาะ, งานด่วน"></textarea>
+              </div>
+            </div>
+            <p class="helper-text" id="request-form-status">กรอกช่องทางติดต่ออย่างน้อย 1 ช่อง แล้วกดส่ง</p>
+            <div class="request-form-actions">
+              <button class="action-button" id="request-submit-button" type="submit">ส่งข้อมูลผลิต</button>
+            </div>
+          </form>
+        </div>
       </section>
     </div>
 
