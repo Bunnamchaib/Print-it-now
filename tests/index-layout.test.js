@@ -12,3 +12,9 @@ test("layer height selector is visible before the advanced panel", () => {
   assert.notEqual(advancedIndex, -1);
   assert.ok(layerHeightIndex < advancedIndex);
 });
+
+test("quote screen does not render a manual calculate button", () => {
+  const source = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+
+  assert.doesNotMatch(source, /id="calculate-button"/);
+});

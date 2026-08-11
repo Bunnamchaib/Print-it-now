@@ -175,7 +175,7 @@ function bindEvents() {
     updateScaleHint();
   });
 
-  elements.calculateButton.addEventListener("click", () => {
+  elements.calculateButton?.addEventListener("click", () => {
     if (!state.modelMetrics) {
       showWarning("เลือกไฟล์ก่อน แล้วระบบจะคำนวณให้");
       return;
@@ -535,6 +535,9 @@ function getSelectedColorHex() {
 function setBusyState(isBusy, statusText) {
   state.busy = isBusy;
   elements.previewStatus.textContent = statusText;
+  if (!elements.calculateButton) {
+    return;
+  }
   elements.calculateButton.disabled = isBusy;
   elements.calculateButton.textContent = isBusy ? "กำลังประมวลผล..." : "ประเมินราคา";
 }
